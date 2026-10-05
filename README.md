@@ -12,6 +12,31 @@
 
 <img width="1280" height="720" alt="niri with a few windows open" src="https://github.com/user-attachments/assets/dea5909e-1859-4aaa-9d88-d37f9663e00b" />
 
+## Downstream changes
+
+This repository is niri with a few downstream changes on top of the newest stable
+upstream release.
+
+1. **Free view scrolling**, enabled with:
+
+   ```kdl
+   gestures {
+       free-view-scroll
+   }
+   ```
+
+   The default is off. A scrolling gesture can stop between columns instead of
+   snapping to a column edge; it ends where its momentum takes it, within the first
+   and last column. Fullscreen columns still align. Config and window updates keep
+   the position while the active column stays at least partly visible; changes that
+   would hide it completely fall back to the normal visibility repair.
+
+   Adapted from James Reeves's work in
+   [weavejester/niri](https://github.com/weavejester/niri/tree/free-view-scroll)
+   (`f43147c31ff49dac65a65aaed4fa16ea7153195b`,
+   `c51ecb0ddab71131b14dd83bd4e0ffc111843e66`), with the visibility repair added.
+   Discussion: [upstream #1347](https://github.com/niri-wm/niri/discussions/1347).
+
 ## About
 
 Windows are arranged in columns on an infinite strip going to the right.

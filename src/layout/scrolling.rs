@@ -330,8 +330,12 @@ impl<W: LayoutElement> ScrollingSpace<W> {
         self.scale = scale;
         self.options = options;
 
-        // Apply always-center and such right away.
-        if !self.columns.is_empty() && !self.view_offset.is_gesture() {
+        // Preserve a free view while the active column is visible. Geometry changes
+        // must still bring it back into view, and fullscreen must always align.
+        if !self.columns.is_empty()
+            && !self.view_offset.is_gesture()
+            && !self.should_preserve_free_view()
+        {
             self.animate_view_offset_to_column(None, self.active_column_idx, None);
         }
     }
@@ -1364,7 +1368,8 @@ impl<W: LayoutElement> ScrollingSpace<W> {
             }
 
             // When the active column goes fullscreen, store the view offset to restore later.
-            let is_normal = self.columns[col_idx].sizing_mode().is_normal();
+            let mode = self.columns[col_idx].sizing_mode();
+            let is_normal = mode.is_normal();
             if was_normal && !is_normal {
                 self.view_offset_to_restore = Some(self.view_offset.stationary());
             }
@@ -1402,7 +1407,9 @@ impl<W: LayoutElement> ScrollingSpace<W> {
 
                 // FIXME: we will want to skip the animation in some cases here to make continuously
                 // resizing windows not look janky.
-                self.animate_view_offset_to_column_with_config(None, col_idx, None, config);
+                if !self.should_preserve_free_view() {
+                    self.animate_view_offset_to_column_with_config(None, col_idx, None, config);
+                }
             }
         }
     }
@@ -2289,6 +2296,26 @@ impl<W: LayoutElement> ScrollingSpace<W> {
         self.animate_view_offset(self.active_column_idx, new_view_x - active_col_x.unwrap());
         // Just in case.
         self.animate_view_offset_to_column(None, self.active_column_idx, None);
+    }
+
+    fn should_preserve_free_view(&self) -> bool {
+        if !self.options.gestures.free_view_scroll {
+            return false;
+        }
+        let Some(column) = self.columns.get(self.active_column_idx) else {
+            return false;
+        };
+        let mode = column.sizing_mode();
+        if mode.is_fullscreen() {
+            return false;
+        }
+        let area = if mode.is_maximized() {
+            self.parent_area
+        } else {
+            self.working_area
+        };
+        let view_left = self.view_offset.target() + area.loc.x;
+        view_left < column.width() && 0. < view_left + area.size.w
     }
 
     pub fn view_pos(&self) -> f64 {
@@ -3387,6 +3414,17 @@ impl<W: LayoutElement> ScrollingSpace<W> {
             .min_by_key(|snap| NotNan::new((snap.view_pos - target_view_pos).abs()).unwrap())
             .unwrap();
 
+        // Reuse the gesture's projected endpoint without aligning it to a column edge.
+        // Keep the existing workspace bounds and column selection behavior.
+        let final_view_pos = if self.options.gestures.free_view_scroll {
+            target_view_pos.clamp(
+                snapping_points.first().unwrap().view_pos,
+                snapping_points.last().unwrap().view_pos,
+            )
+        } else {
+            target_snap.view_pos
+        };
+
         let mut new_col_idx = target_snap.col_idx;
 
         if !self.is_centering_focused_column() {
@@ -3407,7 +3445,7 @@ impl<W: LayoutElement> ScrollingSpace<W> {
                     let left_strut = area.loc.x;
 
                     if mode.is_fullscreen() {
-                        if target_snap.view_pos + self.view_size.w < col_x + col_w {
+                        if final_view_pos + self.view_size.w < col_x + col_w {
                             break;
                         }
                     } else {
@@ -3417,8 +3455,7 @@ impl<W: LayoutElement> ScrollingSpace<W> {
                             ((area.size.w - col_w) / 2.).clamp(0., self.options.layout.gaps)
                         };
 
-                        if target_snap.view_pos + left_strut + area.size.w < col_x + col_w + padding
-                        {
+                        if final_view_pos + left_strut + area.size.w < col_x + col_w + padding {
                             break;
                         }
                     }
@@ -3441,7 +3478,7 @@ impl<W: LayoutElement> ScrollingSpace<W> {
                     let left_strut = area.loc.x;
 
                     if mode.is_fullscreen() {
-                        if col_x < target_snap.view_pos {
+                        if col_x < final_view_pos {
                             break;
                         }
                     } else {
@@ -3451,7 +3488,7 @@ impl<W: LayoutElement> ScrollingSpace<W> {
                             ((area.size.w - col_w) / 2.).clamp(0., self.options.layout.gaps)
                         };
 
-                        if col_x - padding < target_snap.view_pos + left_strut {
+                        if col_x - padding < final_view_pos + left_strut {
                             break;
                         }
                     }
@@ -3470,7 +3507,7 @@ impl<W: LayoutElement> ScrollingSpace<W> {
 
         self.active_column_idx = new_col_idx;
 
-        let target_view_offset = target_snap.view_pos - new_col_x;
+        let target_view_offset = final_view_pos - new_col_x;
 
         self.view_offset = ViewOffset::Animation(Animation::new(
             self.clock.clone(),
@@ -3481,7 +3518,11 @@ impl<W: LayoutElement> ScrollingSpace<W> {
         ));
 
         // HACK: deal with things like snapping to the right edge of a larger-than-view window.
-        self.animate_view_offset_to_column(None, new_col_idx, None);
+        if !self.options.gestures.free_view_scroll
+            || self.columns[new_col_idx].sizing_mode().is_fullscreen()
+        {
+            self.animate_view_offset_to_column(None, new_col_idx, None);
+        }
 
         true
     }

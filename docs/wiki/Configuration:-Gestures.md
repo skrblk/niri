@@ -113,3 +113,31 @@ gestures {
 ```
 
 You can also customize hot corners per-output [in the output config](./Configuration:-Outputs.md#hot-corners).
+
+### `free-view-scroll`
+
+This is a downstream option in the skrblk/niri build, disabled by default.
+
+Normally, releasing a tiling-view scrolling gesture aligns the view to a column
+boundary. With `free-view-scroll`, the view instead stops at the gesture's
+projected endpoint, within the existing workspace bounds. This allows windows
+to remain partially visible. The existing gesture momentum and animations still
+apply.
+
+```kdl
+gestures {
+    free-view-scroll
+}
+```
+
+This applies to mouse panning, touchpad swipes, and scrolling gestures in the
+overview. Fullscreen columns still align to the screen. Focusing a different
+column continues to use the upstream view movement behavior; this option does
+not lock the view independently of keyboard focus.
+
+Config updates and window commits preserve the position while the active column
+remains at least partially visible. If a display or window resize would hide it
+completely, the usual visibility adjustment brings it back into view.
+
+To restore snapping for subsequent gestures, omit the option or set
+`free-view-scroll false`.

@@ -1661,6 +1661,7 @@ mod tests {
                     bottom_left: false,
                     bottom_right: false,
                 },
+                free_view_scroll: false,
             },
             overview: Overview {
                 zoom: 0.5,

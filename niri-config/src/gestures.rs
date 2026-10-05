@@ -1,4 +1,4 @@
-use crate::utils::MergeWith;
+use crate::utils::{Flag, MergeWith};
 use crate::FloatOrInt;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
@@ -6,6 +6,7 @@ pub struct Gestures {
     pub dnd_edge_view_scroll: DndEdgeViewScroll,
     pub dnd_edge_workspace_switch: DndEdgeWorkspaceSwitch,
     pub hot_corners: HotCorners,
+    pub free_view_scroll: bool,
 }
 
 #[derive(knuffel::Decode, Debug, Default, Clone, Copy, PartialEq)]
@@ -16,6 +17,8 @@ pub struct GesturesPart {
     pub dnd_edge_workspace_switch: Option<DndEdgeWorkspaceSwitchPart>,
     #[knuffel(child)]
     pub hot_corners: Option<HotCorners>,
+    #[knuffel(child)]
+    pub free_view_scroll: Option<Flag>,
 }
 
 impl MergeWith<GesturesPart> for Gestures {
@@ -24,6 +27,7 @@ impl MergeWith<GesturesPart> for Gestures {
             (self, part),
             dnd_edge_view_scroll,
             dnd_edge_workspace_switch,
+            free_view_scroll,
         );
         merge_clone!((self, part), hot_corners);
     }
