@@ -1512,6 +1512,15 @@ impl<W: LayoutElement> Layout<W> {
     }
 
     pub fn activate_window(&mut self, window: &W::Id) {
+        self.activate_window_with_scrolling(window, true);
+    }
+
+    /// Activate a directly clicked window, preserving a free view while it is visible.
+    pub fn activate_window_from_pointer(&mut self, window: &W::Id) {
+        self.activate_window_with_scrolling(window, false);
+    }
+
+    fn activate_window_with_scrolling(&mut self, window: &W::Id, scroll: bool) {
         if let Some(InteractiveMoveState::Moving(move_)) = &self.interactive_move {
             if move_.tile.window().id() == window {
                 return;
@@ -1529,7 +1538,7 @@ impl<W: LayoutElement> Layout<W> {
 
         for (monitor_idx, mon) in monitors.iter_mut().enumerate() {
             for (workspace_idx, ws) in mon.workspaces.iter_mut().enumerate() {
-                if ws.activate_window(window) {
+                if ws.activate_window(window, scroll) {
                     *active_monitor_idx = monitor_idx;
 
                     // If currently in the middle of a vertical swipe between the target workspace
@@ -2675,7 +2684,7 @@ impl<W: LayoutElement> Layout<W> {
                                 DndHoldTarget::Window(id) => mon
                                     .workspaces
                                     .iter_mut()
-                                    .position(|ws| ws.activate_window(&id))
+                                    .position(|ws| ws.activate_window(&id, true))
                                     .unwrap(),
                                 DndHoldTarget::Workspace(id) => {
                                     mon.workspaces.iter().position(|ws| ws.id() == id).unwrap()
@@ -4115,7 +4124,7 @@ impl<W: LayoutElement> Layout<W> {
                     ws.dnd_scroll_gesture_end();
 
                     if moved_tile_was_active {
-                        ws.activate_window(&window_id);
+                        ws.activate_window(&window_id, true);
                     }
                 }
 

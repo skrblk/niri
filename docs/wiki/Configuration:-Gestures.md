@@ -131,9 +131,11 @@ gestures {
 ```
 
 This applies to mouse panning, touchpad swipes, and scrolling gestures in the
-overview. Fullscreen columns still align to the screen. Focusing a different
-column continues to use the upstream view movement behavior; this option does
-not lock the view independently of keyboard focus.
+overview. Fullscreen columns still align to the screen. Clicking a window that
+is at least partially visible focuses it without moving the view. Other focus
+changes, such as from the keyboard, IPC or focus-follows-mouse, continue to use
+the upstream view movement behavior; this option does not lock the view
+independently of keyboard focus.
 
 Config updates and window commits preserve the position while the active column
 remains at least partially visible. If a display or window resize would hide it

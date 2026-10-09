@@ -1,5 +1,7 @@
 use super::*;
 
+mod click_focus;
+
 fn options(enabled: bool, centered: bool) -> Options {
     let config = Config::parse_mem(&format!(
         r#"

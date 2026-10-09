@@ -2883,7 +2883,7 @@ impl State {
                         let location = pointer.current_location();
 
                         if !is_overview_open {
-                            self.niri.layout.activate_window(&window);
+                            self.niri.layout.activate_window_from_pointer(&window);
                         }
 
                         let start_data = PointerGrabStartData {
@@ -2947,11 +2947,11 @@ impl State {
                                     if intersection.intersects(ResizeEdge::LEFT_RIGHT) {
                                         // FIXME: don't activate once we can pass specific windows
                                         // to actions.
-                                        self.niri.layout.activate_window(&window);
+                                        self.niri.layout.activate_window_from_pointer(&window);
                                         self.niri.layout.toggle_full_width();
                                     }
                                     if intersection.intersects(ResizeEdge::TOP_BOTTOM) {
-                                        self.niri.layout.activate_window(&window);
+                                        self.niri.layout.activate_window_from_pointer(&window);
                                         self.niri.layout.reset_window_height(Some(&window));
                                     }
                                     // FIXME: granular.
@@ -2960,7 +2960,7 @@ impl State {
                                 }
                             }
 
-                            self.niri.layout.activate_window(&window);
+                            self.niri.layout.activate_window_from_pointer(&window);
 
                             if self
                                 .niri
@@ -2983,7 +2983,7 @@ impl State {
                 }
 
                 if !is_overview_open {
-                    self.niri.layout.activate_window(&window);
+                    self.niri.layout.activate_window_from_pointer(&window);
                 }
 
                 // FIXME: granular.
@@ -3637,7 +3637,11 @@ impl State {
                             }
                         }
 
-                        self.niri.layout.activate_window(&window);
+                        if is_overview_open {
+                            self.niri.layout.activate_window(&window);
+                        } else {
+                            self.niri.layout.activate_window_from_pointer(&window);
+                        }
 
                         // FIXME: granular.
                         self.niri.queue_redraw_all();
@@ -4110,11 +4114,8 @@ impl State {
             let mods = modifiers_from_state(mods);
             let mod_down = mods.contains(mod_key.to_modifiers());
 
-            if self.niri.layout.is_overview_open()
-                && !mod_down
-                && under.layer.is_none()
-                && under.output.is_some()
-            {
+            let is_overview_open = self.niri.layout.is_overview_open();
+            if is_overview_open && !mod_down && under.layer.is_none() && under.output.is_some() {
                 let (output, pos_within_output) = self.niri.output_under(pos).unwrap();
                 let output = output.clone();
 
@@ -4146,7 +4147,11 @@ impl State {
                 );
                 handle.set_grab(self, grab, serial);
             } else if let Some((window, _)) = under.window {
-                self.niri.layout.activate_window(&window);
+                if is_overview_open {
+                    self.niri.layout.activate_window(&window);
+                } else {
+                    self.niri.layout.activate_window_from_pointer(&window);
+                }
 
                 // Check if we need to start a touch move grab.
                 if mod_down {

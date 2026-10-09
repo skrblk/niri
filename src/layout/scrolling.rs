@@ -227,6 +227,9 @@ struct TileData {
     /// Cached actual size of the tile.
     size: Size<f64, Logical>,
 
+    /// Cached client geometry, which can change within fixed fullscreen tile bounds.
+    window_size: Size<i32, Logical>,
+
     /// Cached whether the tile is being interactively resized by its left edge.
     interactively_resizing_by_left_edge: bool,
 }
@@ -1256,7 +1259,8 @@ impl<W: LayoutElement> ScrollingSpace<W> {
             .enumerate()
             .find(|(_, col)| col.contains(window))
             .unwrap();
-        let was_normal = column.sizing_mode().is_normal();
+        let prev_mode = column.sizing_mode();
+        let was_normal = prev_mode.is_normal();
         let prev_origin = column.tiles_origin();
 
         let (tile_idx, tile) = column
@@ -1265,6 +1269,9 @@ impl<W: LayoutElement> ScrollingSpace<W> {
             .enumerate()
             .find(|(_, tile)| tile.window().id() == window)
             .unwrap();
+
+        let prev_tile_mode = tile.sizing_mode();
+        let prev_window_size = column.data[tile_idx].window_size;
 
         let resize = tile.window_mut().interactive_resize_data();
 
@@ -1278,6 +1285,9 @@ impl<W: LayoutElement> ScrollingSpace<W> {
         column.update_window(window);
         self.data[col_idx].update(column);
         column.update_tile_sizes(false);
+
+        let tile_geometry_unchanged = prev_tile_mode == column.tiles[tile_idx].sizing_mode()
+            && prev_window_size == column.data[tile_idx].window_size;
 
         let offset = prev_width - self.data[col_idx].width;
 
@@ -1407,7 +1417,16 @@ impl<W: LayoutElement> ScrollingSpace<W> {
 
                 // FIXME: we will want to skip the animation in some cases here to make continuously
                 // resizing windows not look janky.
-                if !self.should_preserve_free_view() {
+                // Clicking a visible fullscreen window can preserve a partial view too.
+                // A focus-only commit has no geometry to repair; fullscreen transitions
+                // and size changes still use the normal alignment below.
+                let preserve_fullscreen_view = self.options.gestures.free_view_scroll
+                    && mode.is_fullscreen()
+                    && prev_mode == mode
+                    && tile_geometry_unchanged
+                    && offset == 0.
+                    && prev_origin == self.columns[col_idx].tiles_origin();
+                if !self.should_preserve_free_view() && !preserve_fullscreen_view {
                     self.animate_view_offset_to_column_with_config(None, col_idx, None, config);
                 }
             }
@@ -1439,15 +1458,39 @@ impl<W: LayoutElement> ScrollingSpace<W> {
         (from_view_offset - new_view_offset).abs() / self.working_area.size.w
     }
 
-    pub fn activate_window(&mut self, window: &W::Id) -> bool {
+    pub fn activate_window(&mut self, window: &W::Id, scroll: bool) -> bool {
         let column_idx = self.columns.iter().position(|col| col.contains(window));
         let Some(column_idx) = column_idx else {
             return false;
         };
-        let column = &mut self.columns[column_idx];
+        // A tab indicator can activate a currently hidden tile. Check visibility
+        // after selecting it, when its render position matches the clicked column.
+        self.columns[column_idx].activate_window(window);
+        let preserve_view = !scroll
+            && self.options.gestures.free_view_scroll
+            && self
+                .tiles_with_render_positions()
+                .any(|(tile, pos, visible)| {
+                    tile.window().id() == window
+                        && visible
+                        && pos.x < self.view_size.w
+                        && 0. < pos.x + tile.tile_size().w
+                });
 
-        column.activate_window(window);
-        self.activate_column(column_idx);
+        if preserve_view {
+            // The offset is relative to the active column. Rebase it when focus
+            // changes, keeping both the current view and any manual pan in place.
+            let delta = self.column_x(self.active_column_idx) - self.column_x(column_idx);
+            self.view_offset.offset(delta);
+            if self.active_column_idx != column_idx {
+                self.active_column_idx = column_idx;
+                self.activate_prev_column_on_removal = None;
+                self.view_offset_to_restore = None;
+                self.interactive_resize = None;
+            }
+        } else {
+            self.activate_column(column_idx);
+        }
 
         true
     }
@@ -3935,6 +3978,7 @@ impl TileData {
         let mut rv = Self {
             height,
             size: Size::default(),
+            window_size: Size::default(),
             interactively_resizing_by_left_edge: false,
         };
         rv.update(tile);
@@ -3943,6 +3987,7 @@ impl TileData {
 
     pub fn update<W: LayoutElement>(&mut self, tile: &Tile<W>) {
         self.size = tile.tile_size();
+        self.window_size = tile.window().size();
         self.interactively_resizing_by_left_edge = tile
             .window()
             .interactive_resize_data()
@@ -5258,6 +5303,7 @@ impl<W: LayoutElement> Column<W> {
         let dummy = TileData {
             height: WindowHeight::auto_1(),
             size: Size::default(),
+            window_size: Size::default(),
             interactively_resizing_by_left_edge: false,
         };
         let data = data.chain(iter::once(dummy));

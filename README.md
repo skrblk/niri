@@ -37,6 +37,11 @@ upstream release.
    `c51ecb0ddab71131b14dd83bd4e0ffc111843e66`), with the visibility repair added.
    Discussion: [upstream #1347](https://github.com/niri-wm/niri/discussions/1347).
 
+2. **Clicks keep the view.** With free view scrolling on, clicking a window that is at
+   least partly visible focuses it without scrolling. Keyboard and IPC activation,
+   focus-follows-mouse and the overview keep upstream's behavior. An unchanged
+   fullscreen focus commit keeps a view that a click kept.
+
 ## About
 
 Windows are arranged in columns on an infinite strip going to the right.
