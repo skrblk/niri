@@ -42,6 +42,13 @@ upstream release.
    focus-follows-mouse and the overview keep upstream's behavior. An unchanged
    fullscreen focus commit keeps a view that a click kept.
 
+3. **Column wrap loops.** `focus-column-right-or-first` and
+   `focus-column-left-or-last` move the column from the far end next to the focused
+   one without moving the view, then step to it, so the next column always comes in
+   from the side focus moves toward. This also applies when every column is on
+   screen. Column order changes as a result. With a floating window focused they keep
+   upstream's jump. This works with or without free view scrolling.
+
 ## About
 
 Windows are arranged in columns on an infinite strip going to the right.

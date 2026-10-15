@@ -14,6 +14,7 @@ use smithay::utils::Rectangle;
 use super::*;
 
 mod animations;
+mod column_wrap;
 mod free_view_scroll;
 mod fullscreen;
 

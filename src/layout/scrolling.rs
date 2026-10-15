@@ -1627,6 +1627,56 @@ impl<W: LayoutElement> ScrollingSpace<W> {
         self.activate_column(0);
     }
 
+    /// Focuses the column to the right, looping at the end: the first column moves in after the
+    /// last one without the view moving, then gets focus like any right neighbor. Upstream jumps
+    /// the view back to the first column instead.
+    pub fn focus_column_right_or_first(&mut self) {
+        if self.focus_right() || self.columns.len() < 2 {
+            return;
+        }
+
+        self.move_end_column_to_other_end(0);
+        self.focus_right();
+    }
+
+    /// Focuses the column to the left, looping at the start: the last column moves in before the
+    /// first one without the view moving, then gets focus like any left neighbor.
+    pub fn focus_column_left_or_last(&mut self) {
+        if self.focus_left() || self.columns.len() < 2 {
+            return;
+        }
+
+        self.move_end_column_to_other_end(self.columns.len() - 1);
+        self.focus_left();
+    }
+
+    /// Moves the first column to the end, or the last column to the start, keeping every other
+    /// column where it is on screen. The moved column must not be the active one.
+    fn move_end_column_to_other_end(&mut self, from: usize) {
+        let last = self.columns.len() - 1;
+        let to = if from == 0 { last } else { 0 };
+        assert!(from == 0 || from == last);
+        assert_ne!(from, self.active_column_idx);
+
+        let mut column = self.columns.remove(from);
+        let data = self.data.remove(from);
+        cancel_resize_for_column(&mut self.interactive_resize, &mut column);
+        self.columns.insert(to, column);
+        self.data.insert(to, data);
+
+        if from == 0 {
+            self.active_column_idx -= 1;
+        } else {
+            self.active_column_idx += 1;
+        }
+
+        // The view offset is relative to the active column. Every column that did not move
+        // shifted by the same amount as the active one, so leaving the offset alone keeps them
+        // in place on screen. The moved column jumps to its new place without a move animation;
+        // the focus step that follows brings it into view.
+        self.activate_prev_column_on_removal = None;
+    }
+
     pub fn focus_column_last(&mut self) {
         if self.columns.is_empty() {
             return;

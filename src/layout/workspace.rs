@@ -938,14 +938,23 @@ impl<W: LayoutElement> Workspace<W> {
     }
 
     pub fn focus_column_right_or_first(&mut self) {
-        if !self.focus_right() {
-            self.focus_column_first();
+        if self.floating_is_active.get() {
+            // Floating windows have no strip to loop around; keep upstream's jump.
+            if !self.focus_right() {
+                self.focus_column_first();
+            }
+        } else {
+            self.scrolling.focus_column_right_or_first();
         }
     }
 
     pub fn focus_column_left_or_last(&mut self) {
-        if !self.focus_left() {
-            self.focus_column_last();
+        if self.floating_is_active.get() {
+            if !self.focus_left() {
+                self.focus_column_last();
+            }
+        } else {
+            self.scrolling.focus_column_left_or_last();
         }
     }
 
