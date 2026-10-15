@@ -25,11 +25,11 @@ upstream release.
    }
    ```
 
-   The default is off. A scrolling gesture can stop between columns instead of
-   snapping to a column edge; it ends where its momentum takes it, within the first
-   and last column. Fullscreen columns still align. Config and window updates keep
-   the position while the active column stays at least partly visible; changes that
-   would hide it completely fall back to the normal visibility repair.
+   The default is off. A scrolling gesture can stop between columns. It stops exactly
+   where it is let go, without momentum or snapping, and the drag itself stops at the
+   first and last column. Fullscreen columns still align. Config and window updates
+   keep the position while the active column stays at least partly visible; changes
+   that would hide it completely fall back to the normal visibility repair.
 
    Adapted from James Reeves's work in
    [weavejester/niri](https://github.com/weavejester/niri/tree/free-view-scroll)

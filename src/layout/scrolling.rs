@@ -285,6 +285,14 @@ struct MoveAnimation {
     from: f64,
 }
 
+/// A place where a view gesture can come to rest.
+struct Snap {
+    /// View position relative to x = 0 (the first column).
+    view_pos: f64,
+    /// Column to activate for this snapping point.
+    col_idx: usize,
+}
+
 impl<W: LayoutElement> ScrollingSpace<W> {
     pub fn new(
         view_size: Size<f64, Logical>,
@@ -3132,13 +3140,35 @@ impl<W: LayoutElement> ScrollingSpace<W> {
         timestamp: Duration,
         is_touchpad: bool,
     ) -> Option<bool> {
-        let ViewOffset::Gesture(gesture) = &mut self.view_offset else {
+        let ViewOffset::Gesture(gesture) = &self.view_offset else {
             return None;
         };
 
         if gesture.is_touchpad != is_touchpad || gesture.dnd_last_event_time.is_some() {
             return None;
         }
+
+        // With free view scrolling, stop the drag at the first and last column, so letting go
+        // never has to move the view back.
+        let bounds = if self.options.gestures.free_view_scroll && !self.columns.is_empty() {
+            let points = self.view_gesture_snapping_points();
+            let min = points
+                .iter()
+                .map(|s| s.view_pos)
+                .fold(f64::INFINITY, f64::min);
+            let max = points
+                .iter()
+                .map(|s| s.view_pos)
+                .fold(f64::NEG_INFINITY, f64::max);
+            let active_col_x = self.column_x(self.active_column_idx);
+            Some((min - active_col_x, max - active_col_x))
+        } else {
+            None
+        };
+
+        let ViewOffset::Gesture(gesture) = &mut self.view_offset else {
+            unreachable!();
+        };
 
         gesture.tracker.push(delta_x, timestamp);
 
@@ -3148,7 +3178,13 @@ impl<W: LayoutElement> ScrollingSpace<W> {
             1.
         };
         let pos = gesture.tracker.pos() * norm_factor;
-        let view_offset = pos + gesture.delta_from_tracker;
+        let mut view_offset = pos + gesture.delta_from_tracker;
+        if let Some((min, max)) = bounds {
+            let clamped = view_offset.clamp(min, max);
+            // Drop the overshoot, so dragging back responds at once.
+            gesture.delta_from_tracker += clamped - view_offset;
+            view_offset = clamped;
+        }
         gesture.current_view_offset = view_offset;
 
         Some(true)
@@ -3228,51 +3264,9 @@ impl<W: LayoutElement> ScrollingSpace<W> {
         true
     }
 
-    pub fn view_offset_gesture_end(&mut self, is_touchpad: Option<bool>) -> bool {
-        let ViewOffset::Gesture(gesture) = &mut self.view_offset else {
-            return false;
-        };
-
-        if is_touchpad.is_some_and(|x| gesture.is_touchpad != x) {
-            return false;
-        }
-
-        // We do not handle cancelling, just like GNOME Shell doesn't. For this gesture, proper
-        // cancelling would require keeping track of the original active column, and then updating
-        // it in all the right places (adding columns, removing columns, etc.) -- quite a bit of
-        // effort and bug potential.
-
-        // Take into account any idle time between the last event and now.
-        let now = self.clock.now_unadjusted();
-        gesture.tracker.push(0., now);
-
-        let norm_factor = if gesture.is_touchpad {
-            self.working_area.size.w / VIEW_GESTURE_WORKING_AREA_MOVEMENT
-        } else {
-            1.
-        };
-        let velocity = gesture.tracker.velocity() * norm_factor;
-        let pos = gesture.tracker.pos() * norm_factor;
-        let current_view_offset = pos + gesture.delta_from_tracker;
-
-        if self.columns.is_empty() {
-            self.view_offset = ViewOffset::Static(current_view_offset);
-            return true;
-        }
-
-        // Figure out where the gesture would stop after deceleration.
-        let end_pos = gesture.tracker.projected_end_pos() * norm_factor;
-        let target_view_offset = end_pos + gesture.delta_from_tracker;
-
-        // Compute the snapping points. These are where the view aligns with column boundaries on
-        // either side.
-        struct Snap {
-            // View position relative to x = 0 (the first column).
-            view_pos: f64,
-            // Column to activate for this snapping point.
-            col_idx: usize,
-        }
-
+    /// Points where a view gesture can come to rest: the view aligned with column edges, or
+    /// centered on a column when centering. The lowest and highest bound the view.
+    fn view_gesture_snapping_points(&self) -> Vec<Snap> {
         let mut snapping_points = Vec::new();
 
         if self.is_centering_focused_column() {
@@ -3447,23 +3441,74 @@ impl<W: LayoutElement> ScrollingSpace<W> {
             }
         }
 
+        snapping_points
+    }
+
+    pub fn view_offset_gesture_end(&mut self, is_touchpad: Option<bool>) -> bool {
+        let ViewOffset::Gesture(gesture) = &mut self.view_offset else {
+            return false;
+        };
+
+        if is_touchpad.is_some_and(|x| gesture.is_touchpad != x) {
+            return false;
+        }
+
+        // We do not handle cancelling, just like GNOME Shell doesn't. For this gesture, proper
+        // cancelling would require keeping track of the original active column, and then updating
+        // it in all the right places (adding columns, removing columns, etc.) -- quite a bit of
+        // effort and bug potential.
+
+        // Take into account any idle time between the last event and now.
+        let now = self.clock.now_unadjusted();
+        gesture.tracker.push(0., now);
+
+        let norm_factor = if gesture.is_touchpad {
+            self.working_area.size.w / VIEW_GESTURE_WORKING_AREA_MOVEMENT
+        } else {
+            1.
+        };
+        let velocity = gesture.tracker.velocity() * norm_factor;
+        let pos = gesture.tracker.pos() * norm_factor;
+        let current_view_offset = pos + gesture.delta_from_tracker;
+
+        if self.columns.is_empty() {
+            self.view_offset = ViewOffset::Static(current_view_offset);
+            return true;
+        }
+
+        // Figure out where the gesture would stop after deceleration.
+        let end_pos = gesture.tracker.projected_end_pos() * norm_factor;
+        let target_view_offset = end_pos + gesture.delta_from_tracker;
+
+        // Compute the snapping points. These are where the view aligns with column boundaries on
+        // either side.
+        let mut snapping_points = self.view_gesture_snapping_points();
+
         // Find the closest snapping point.
         snapping_points.sort_by_key(|snap| NotNan::new(snap.view_pos).unwrap());
 
         let active_col_x = self.column_x(self.active_column_idx);
         let target_view_pos = active_col_x + target_view_offset;
-        let target_snap = snapping_points
-            .iter()
-            .min_by_key(|snap| NotNan::new((snap.view_pos - target_view_pos).abs()).unwrap())
-            .unwrap();
 
-        // Reuse the gesture's projected endpoint without aligning it to a column edge.
-        // Keep the existing workspace bounds and column selection behavior.
-        let final_view_pos = if self.options.gestures.free_view_scroll {
-            target_view_pos.clamp(
+        // With free view scrolling the view stays exactly where the gesture let go: no
+        // momentum and no snapping. The drag is already kept within the first and last column
+        // (see view_offset_gesture_update); the clamp only guards layout changes mid-gesture.
+        let free_view = self.options.gestures.free_view_scroll;
+        let release_view_pos = if free_view {
+            (active_col_x + current_view_offset).clamp(
                 snapping_points.first().unwrap().view_pos,
                 snapping_points.last().unwrap().view_pos,
             )
+        } else {
+            target_view_pos
+        };
+        let target_snap = snapping_points
+            .iter()
+            .min_by_key(|snap| NotNan::new((snap.view_pos - release_view_pos).abs()).unwrap())
+            .unwrap();
+
+        let final_view_pos = if free_view {
+            release_view_pos
         } else {
             target_snap.view_pos
         };
@@ -3552,13 +3597,18 @@ impl<W: LayoutElement> ScrollingSpace<W> {
 
         let target_view_offset = final_view_pos - new_col_x;
 
-        self.view_offset = ViewOffset::Animation(Animation::new(
-            self.clock.clone(),
-            current_view_offset + delta,
-            target_view_offset,
-            velocity,
-            self.options.animations.horizontal_view_movement.0,
-        ));
+        self.view_offset = if free_view {
+            // Nothing is left to move: the view is already where the gesture ended.
+            ViewOffset::Static(target_view_offset)
+        } else {
+            ViewOffset::Animation(Animation::new(
+                self.clock.clone(),
+                current_view_offset + delta,
+                target_view_offset,
+                velocity,
+                self.options.animations.horizontal_view_movement.0,
+            ))
+        };
 
         // HACK: deal with things like snapping to the right edge of a larger-than-view window.
         if !self.options.gestures.free_view_scroll

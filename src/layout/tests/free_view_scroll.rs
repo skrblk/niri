@@ -1,6 +1,7 @@
 use super::*;
 
 mod click_focus;
+mod drag_release;
 
 fn options(enabled: bool, centered: bool) -> Options {
     let config = Config::parse_mem(&format!(

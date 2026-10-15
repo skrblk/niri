@@ -119,10 +119,9 @@ You can also customize hot corners per-output [in the output config](./Configura
 This is a downstream option in the skrblk/niri build, disabled by default.
 
 Normally, releasing a tiling-view scrolling gesture aligns the view to a column
-boundary. With `free-view-scroll`, the view instead stops at the gesture's
-projected endpoint, within the existing workspace bounds. This allows windows
-to remain partially visible. The existing gesture momentum and animations still
-apply.
+boundary. With `free-view-scroll`, the view instead stops exactly where the
+gesture ends, without momentum, and the drag itself stops at the first and last
+column. This allows windows to remain partially visible.
 
 ```kdl
 gestures {
