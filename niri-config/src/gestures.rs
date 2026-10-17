@@ -7,6 +7,7 @@ pub struct Gestures {
     pub dnd_edge_workspace_switch: DndEdgeWorkspaceSwitch,
     pub hot_corners: HotCorners,
     pub free_view_scroll: bool,
+    pub free_view_scroll_momentum: f64,
 }
 
 #[derive(knuffel::Decode, Debug, Default, Clone, Copy, PartialEq)]
@@ -19,6 +20,8 @@ pub struct GesturesPart {
     pub hot_corners: Option<HotCorners>,
     #[knuffel(child)]
     pub free_view_scroll: Option<Flag>,
+    #[knuffel(child, unwrap(argument))]
+    pub free_view_scroll_momentum: Option<FloatOrInt<0, 10>>,
 }
 
 impl MergeWith<GesturesPart> for Gestures {
@@ -28,6 +31,7 @@ impl MergeWith<GesturesPart> for Gestures {
             dnd_edge_view_scroll,
             dnd_edge_workspace_switch,
             free_view_scroll,
+            free_view_scroll_momentum,
         );
         merge_clone!((self, part), hot_corners);
     }

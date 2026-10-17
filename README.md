@@ -32,8 +32,13 @@ upstream release.
    ```
 
    The default is off. A scrolling gesture can stop between columns. It stops exactly
-   where it is let go, without momentum or snapping, and the drag itself stops at the
-   first and last column. Fullscreen columns still align. Config and window updates
+   where it is let go, without snapping, and the drag itself stops at the first and
+   last column. `free-view-scroll-momentum <seconds>` adds momentum: after letting go,
+   the view slides on, slowing down, as far as the release speed carries it in that
+   many seconds, and stops at the first or last column at the latest. The slide is its
+   own motion, so it also shows with the horizontal view movement animation off. The
+   default 0 keeps the stop where the gesture is let go; about 0.33 matches how far
+   upstream's momentum carries a fling. Fullscreen columns still align. Config and window updates
    keep the position while the active column stays at least partly visible; changes
    that would hide it completely fall back to the normal visibility repair.
 

@@ -30,6 +30,26 @@ use crate::window::ResolvedWindowRules;
 /// Amount of touchpad movement to scroll the view for the width of one working area.
 const VIEW_GESTURE_WORKING_AREA_MOVEMENT: f64 = 1200.;
 
+/// Shortest free view scroll slide, in logical pixels; anything shorter stops at once.
+const FREE_VIEW_SLIDE_MIN_DISTANCE: f64 = 0.5;
+
+/// Remaining distance at which a free view scroll slide ends, in logical pixels.
+const FREE_VIEW_SLIDE_END_DISTANCE: f64 = 0.25;
+
+/// Deceleration rate per millisecond for a free view scroll slide that starts at `velocity` and
+/// covers `distance`, or `None` when there is nothing to slide.
+fn free_view_slide_rate(distance: f64, velocity: f64) -> Option<f64> {
+    if distance.abs() < FREE_VIEW_SLIDE_MIN_DISTANCE || distance * velocity <= 0. {
+        return None;
+    }
+    // Slowing down at rate r per millisecond, the view covers velocity / (1000 * -ln r).
+    let carry_s = distance / velocity;
+    if carry_s < 1e-4 {
+        return None;
+    }
+    Some((-1. / (1000. * carry_s)).exp())
+}
+
 /// A scrollable-tiling space for windows.
 #[derive(Debug)]
 pub struct ScrollingSpace<W: LayoutElement> {
@@ -3220,22 +3240,24 @@ impl<W: LayoutElement> ScrollingSpace<W> {
             unreachable!();
         };
 
-        gesture.tracker.push(delta_x, timestamp);
-
         let norm_factor = if gesture.is_touchpad {
             self.working_area.size.w / VIEW_GESTURE_WORKING_AREA_MOVEMENT
         } else {
             1.
         };
-        let pos = gesture.tracker.pos() * norm_factor;
-        let mut view_offset = pos + gesture.delta_from_tracker;
+        let mut delta_x = delta_x;
         if let Some((min, max)) = bounds {
+            let view_offset =
+                (gesture.tracker.pos() + delta_x) * norm_factor + gesture.delta_from_tracker;
             let clamped = view_offset.clamp(min, max);
-            // Drop the overshoot, so dragging back responds at once.
-            gesture.delta_from_tracker += clamped - view_offset;
-            view_offset = clamped;
+            // Drop the overshoot, so dragging back responds at once and the speed at release is
+            // the speed the view moved at.
+            delta_x += (clamped - view_offset) / norm_factor;
         }
-        gesture.current_view_offset = view_offset;
+        gesture.tracker.push(delta_x, timestamp);
+
+        let pos = gesture.tracker.pos() * norm_factor;
+        gesture.current_view_offset = pos + gesture.delta_from_tracker;
 
         Some(true)
     }
@@ -3540,25 +3562,30 @@ impl<W: LayoutElement> ScrollingSpace<W> {
         let active_col_x = self.column_x(self.active_column_idx);
         let target_view_pos = active_col_x + target_view_offset;
 
-        // With free view scrolling the view stays exactly where the gesture let go: no
-        // momentum and no snapping. The drag is already kept within the first and last column
-        // (see view_offset_gesture_update); the clamp only guards layout changes mid-gesture.
+        // With free view scrolling the view does not align to a column. It stops where the
+        // gesture let go or, with free-view-scroll-momentum, slides on for that many seconds of
+        // the release speed while slowing down, and stops at the first or last column at the
+        // latest. The drag is already kept within those columns (see
+        // view_offset_gesture_update); clamping the release point only guards layout changes
+        // mid-gesture.
         let free_view = self.options.gestures.free_view_scroll;
-        let release_view_pos = if free_view {
-            (active_col_x + current_view_offset).clamp(
-                snapping_points.first().unwrap().view_pos,
-                snapping_points.last().unwrap().view_pos,
-            )
+        let first_view_pos = snapping_points.first().unwrap().view_pos;
+        let last_view_pos = snapping_points.last().unwrap().view_pos;
+        let release_view_pos =
+            (active_col_x + current_view_offset).clamp(first_view_pos, last_view_pos);
+        let rest_view_pos = if free_view {
+            let carry = velocity * self.options.gestures.free_view_scroll_momentum;
+            (release_view_pos + carry).clamp(first_view_pos, last_view_pos)
         } else {
             target_view_pos
         };
         let target_snap = snapping_points
             .iter()
-            .min_by_key(|snap| NotNan::new((snap.view_pos - release_view_pos).abs()).unwrap())
+            .min_by_key(|snap| NotNan::new((snap.view_pos - rest_view_pos).abs()).unwrap())
             .unwrap();
 
         let final_view_pos = if free_view {
-            release_view_pos
+            rest_view_pos
         } else {
             target_snap.view_pos
         };
@@ -3647,10 +3674,7 @@ impl<W: LayoutElement> ScrollingSpace<W> {
 
         let target_view_offset = final_view_pos - new_col_x;
 
-        self.view_offset = if free_view {
-            // Nothing is left to move: the view is already where the gesture ended.
-            ViewOffset::Static(target_view_offset)
-        } else {
+        self.view_offset = if !free_view {
             ViewOffset::Animation(Animation::new(
                 self.clock.clone(),
                 current_view_offset + delta,
@@ -3658,6 +3682,20 @@ impl<W: LayoutElement> ScrollingSpace<W> {
                 velocity,
                 self.options.animations.horizontal_view_movement.0,
             ))
+        } else if let Some(rate) = free_view_slide_rate(final_view_pos - release_view_pos, velocity)
+        {
+            // The slide continues the gesture rather than animating a view change, so it runs
+            // even with the horizontal view movement animation off.
+            ViewOffset::Animation(Animation::decelerate(
+                self.clock.clone(),
+                release_view_pos - new_col_x,
+                velocity,
+                rate,
+                FREE_VIEW_SLIDE_END_DISTANCE,
+            ))
+        } else {
+            // Nothing is left to move: the view is already where the gesture ended.
+            ViewOffset::Static(target_view_offset)
         };
 
         // HACK: deal with things like snapping to the right edge of a larger-than-view window.

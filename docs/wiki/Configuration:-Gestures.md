@@ -120,8 +120,9 @@ This is a downstream option in the skrblk/niri build, disabled by default.
 
 Normally, releasing a tiling-view scrolling gesture aligns the view to a column
 boundary. With `free-view-scroll`, the view instead stops exactly where the
-gesture ends, without momentum, and the drag itself stops at the first and last
-column. This allows windows to remain partially visible.
+gesture ends, or slides on by the amount set with `free-view-scroll-momentum`,
+and the drag itself stops at the first and last column. This allows windows to
+remain partially visible.
 
 ```kdl
 gestures {
@@ -142,3 +143,28 @@ completely, the usual visibility adjustment brings it back into view.
 
 To restore snapping for subsequent gestures, omit the option or set
 `free-view-scroll false`.
+
+### `free-view-scroll-momentum`
+
+This is a downstream option in the skrblk/niri build. It only has an effect
+together with `free-view-scroll`.
+
+It sets how far the view slides on after a scrolling gesture is let go, in
+seconds of the release speed. The view keeps moving in the gesture's direction,
+slowing down, until it has covered the release speed times this number, or until
+it reaches the first or last column. It never aligns to a column. The default, 0,
+stops the view exactly where the gesture is let go; about 0.33 slides as far as
+upstream's momentum carries a fling. The value can be from 0 to 10.
+
+```kdl
+gestures {
+    free-view-scroll
+    free-view-scroll-momentum 0.2
+}
+```
+
+The slide continues the gesture; it is not a view movement animation, so it also
+runs with the `horizontal-view-movement` animation off. The global `animations`
+settings still apply: with `off` the view goes straight to the end point, and
+`slowdown` slows the slide down. Starting a new gesture during the slide catches
+the view where it is.

@@ -1662,6 +1662,7 @@ mod tests {
                     bottom_right: false,
                 },
                 free_view_scroll: false,
+                free_view_scroll_momentum: 0.0,
             },
             overview: Overview {
                 zoom: 0.5,
