@@ -3741,23 +3741,32 @@ impl<W: LayoutElement> ScrollingSpace<W> {
             return false;
         }
 
-        let col = self
+        let col_idx = self
             .columns
-            .iter_mut()
-            .find(|col| col.contains(&window))
+            .iter()
+            .position(|col| col.contains(&window))
             .unwrap();
+        let col = &mut self.columns[col_idx];
 
-        if !col.pending_sizing_mode().is_normal() {
+        if col.pending_sizing_mode().is_fullscreen() {
             return false;
         }
 
-        let tile = col
+        let tile_idx = col
             .tiles
-            .iter_mut()
-            .find(|tile| tile.window().id() == &window)
+            .iter()
+            .position(|tile| tile.window().id() == &window)
             .unwrap();
 
-        let original_window_size = tile.window_size();
+        let original_window_size = col.tiles[tile_idx].window_size();
+
+        // A window maximized to the edges leaves that state at the width it has on screen, so
+        // the resize starts from what is shown instead of not starting at all.
+        if col.pending_sizing_mode().is_maximized() {
+            let width = original_window_size.w.round() as i32;
+            col.set_column_width(SizeChange::SetFixed(width), Some(tile_idx), false);
+            self.data[col_idx].update(col);
+        }
 
         let resize = InteractiveResize {
             window,

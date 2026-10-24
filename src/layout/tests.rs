@@ -17,6 +17,7 @@ mod animations;
 mod column_wrap;
 mod free_view_scroll;
 mod fullscreen;
+mod interactive_resize_maximized;
 
 impl<W: LayoutElement> Default for Layout<W> {
     fn default() -> Self {

@@ -60,6 +60,14 @@ upstream release.
    screen. Column order changes as a result. With a floating window focused they keep
    upstream's jump. This works with or without free view scrolling.
 
+4. **Maximized windows can be resized.** An interactive resize (Mod with the right
+   mouse button dragged, or a resize the window requests) on a window maximized to
+   edges no longer refuses to start, which passed the click on to the window instead.
+   The window leaves the maximized state at the width it has on screen, and the resize
+   goes on from there. Its height follows the column again, leaving room for gaps. It
+   stays in the scrolling layout, also when it was maximized from floating. Fullscreen
+   windows still don't start a resize.
+
 ## About
 
 Windows are arranged in columns on an infinite strip going to the right.

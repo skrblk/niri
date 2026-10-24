@@ -25,6 +25,9 @@ Windows can also control maximizing-to-edges: when you click on the square icon 
 
 You can put multiple maximized windows into a [tabbed column](./Tabs.md), but not into a regular column.
 
+Starting an interactive resize on a window maximized to edges, for example with <kbd>Mod</kbd> and the right mouse button, unmaximizes it at the width it has on screen and resizes it from there.
+The window stays in the scrolling layout, even if it was maximized from floating.
+
 ![Screenshot of a window maximized to edges.](./img/window-maximized-to-edges.png)
 
 You can make a window open maximized-to-edges, or prevent a window from maximizing upon opening, with the [`open-maximized-to-edges`](./Configuration:-Window-Rules.md#open-maximized-to-edges) window rule.
